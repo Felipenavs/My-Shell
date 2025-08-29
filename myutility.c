@@ -1,4 +1,5 @@
 #include <ctype.h>
+#include <unistd.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -6,7 +7,6 @@
 #include <sys/stat.h>
 #include <stdbool.h>
 #include "myutility.h"
-
 
 
 int is_pipe(char c)
@@ -39,17 +39,19 @@ enum token_type get_token_type(char c)
 
 char * check_str_capacity(char * str, unsigned length, unsigned * capacity)
 {
-    if(length >= *capacity)
+    int cap = *capacity;
+    if(length>= *capacity)
     {
-        *capacity *= 2;
-        str = realloc(str, *capacity);
+        *capacity = cap * 2;
+        char * temp = realloc(str, *capacity);
         if(!str)
         {
+            free(str);
             perror("realloc failed");
             return NULL;
         }
+        str = temp;
     }
-
     return str;
 }
 
@@ -81,13 +83,9 @@ int split_path(const char *fullpath, char **dir, char **file) {
             return -1;
         }
     }
-
     return 1;
 }
 
-
-
-// Check if name matches pattern with single '*'
 int match_pattern(const char *pattern, const char *name) {
     const char *star = strchr(pattern, '*');
     if (!star) return -1;
@@ -104,7 +102,6 @@ int match_pattern(const char *pattern, const char *name) {
     return 1;
 }
 
-// Expand wildcard in a single directory
 int expand_wildcard(const char *dir_path, const char *pattern, array_t * L) {
     DIR *dir = opendir(dir_path);
     if (!dir) {
@@ -131,4 +128,56 @@ void to_lowercase(char *str) {
         str[i] = tolower((unsigned char)str[i]);
     }
 }
+
+void invalid_format(char * word)
+{
+    fprintf(stderr, "Syntax error near token '%s'\n", word);
+}
+
+int is_quote(char c)
+{
+    if(c == '\'' || c == '\"')
+        return 1;
+    
+    return 0;
+}
+
+int grab_string(const char *command_line, int *index, int command_line_size, char quote, array_t * tokens)
+{
+    int j = 0;
+    int str = 0;
+    int i = *index + 1;  // skip opening quote
+
+    // allocate buffer for worst case (all remaining chars + null)
+    char * word = malloc(command_line_size - i + 1);
+    if (!word) {
+        perror("malloc");
+        return -1;
+    }
+
+    for (; i < command_line_size; i++) {
+        if (command_line[i] == quote) {
+            str = 1;
+            break;
+        }
+        word[j++] = command_line[i];
+    }
+
+    if (str && j > 0) {
+        word[j] = '\0';
+        *index = i + 1; // move past closing quote
+
+        if(al_append(tokens, word) == -1)
+        {
+            return -1;
+        }
+        return 1;
+    }
+
+    free(word);
+    return 0;
+
+}
+
+
 
