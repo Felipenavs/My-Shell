@@ -52,3 +52,21 @@ int al_append(array_t * L, char * item)
     L->length++;
     return 0;
 }
+
+int al_null_terminator(array_t * L)
+{
+    if (L->length == L->capacity) 
+    {
+        L->capacity *= 2;
+        char **temp = realloc(L->data, L->capacity * sizeof(char *));
+        if (!temp)
+        {
+            perror("realloc failed");
+            return -1;
+        }
+        L->data = temp;
+    }
+    
+    L->data[L->length] = NULL;
+    return 0;
+}
