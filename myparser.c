@@ -11,7 +11,6 @@
 
 int get_tokens(array_t * tokens, const char * command_line, int array_size)
 {
-    
     unsigned buffer_size = 32;
     char * word_buffer = malloc(buffer_size);
     if(!word_buffer)
@@ -20,16 +19,18 @@ int get_tokens(array_t * tokens, const char * command_line, int array_size)
         return -1;
     }
 
+    //tracks the size of the current token
     unsigned word_size = 0;
-
     for (int i = 0; i < array_size; i++)
     {
+        //if current character is a redirection token. eg: '|', '<' or '>'
         if(is_pipe(command_line[i]) || is_input_redirection(command_line[i]) || is_output_redirection(command_line[i]))
         {
+            //if no current token, then just adds the char as a token
             if(word_size == 0)
             {
                 word_buffer[0] = command_line[i];
-                word_buffer[1] = '\0';
+                word_buffer[1] = '\0'; //appends null terminator
                 if(al_append(tokens, word_buffer) == -1)
                 {
                     return -1;
@@ -37,13 +38,14 @@ int get_tokens(array_t * tokens, const char * command_line, int array_size)
                 continue;
             }
             
-            
             if(!check_str_capacity(word_buffer, word_size, &buffer_size))
             {
                 return -1;
             }
 
-            word_buffer[word_size] = '\0';
+            word_buffer[word_size] = '\0'; //appends null terminator to current word
+
+            //creates a token 
             char * token = malloc(sizeof(char)*2);
             if(!token)
             {
@@ -53,6 +55,7 @@ int get_tokens(array_t * tokens, const char * command_line, int array_size)
             token[0] = command_line[i];
             token[1] = '\0';
 
+            //adds the tokens to the tokens array
             if(al_append(tokens, word_buffer) ==-1 || al_append(tokens, token) == -1)
             {
                 return -1;
@@ -60,22 +63,32 @@ int get_tokens(array_t * tokens, const char * command_line, int array_size)
             
             word_size = 0;
             free(token);
-            
         }
-        else if(is_word_char(command_line[i]))
-        {
-            if(!check_str_capacity(word_buffer, word_size, &buffer_size))
+        else if(is_word_char(command_line[i])) //current character is part of a "word"
+        {   
+
+            if(is_quote(command_line[i]) && word_size ==0 && (array_size - i > 1))
+            {
+                if(grab_string(command_line,&i,array_size,command_line[i],tokens))
+                    continue;
+                
+            }
+
+            word_buffer = check_str_capacity(word_buffer, word_size, &buffer_size);
+            if( word_buffer== NULL)
             {
                 return -1;
             }
 
+            //just append it to current word
             word_buffer[word_size] = command_line[i];
             word_size++;
 
         }
-        else
+        else //if char is space or '\n' 
         {
 
+            //if not current word is stored just continue
             if(word_size == 0)
             {
                 continue;
@@ -86,6 +99,7 @@ int get_tokens(array_t * tokens, const char * command_line, int array_size)
                 return -1;
             }
 
+            //if current word is stored, append null terminator to word and add it to tokens array
             word_buffer[word_size] = '\0';
             word_size = 0;
             if(al_append(tokens, word_buffer) == -1)
@@ -93,9 +107,25 @@ int get_tokens(array_t * tokens, const char * command_line, int array_size)
                 return -1;
             }
         }
-
     }
+    //if loop ends and there still is a token in the buffer.
+    //usually happens when reading from a file that doesn't include
+    //a \n character.
+    if(word_size > 0)
+    {
+        if(!check_str_capacity(word_buffer, word_size, &buffer_size))
+        {
+            return -1;
+        }
 
+        //if current word is stored, append null terminator to word and add it to tokens array
+        word_buffer[word_size] = '\0';
+        word_size = 0;
+        if(al_append(tokens, word_buffer) == -1)
+        {
+            return -1;
+        }
+    }
     free(word_buffer);
     return 0;
 }
@@ -104,10 +134,6 @@ int get_tokens(array_t * tokens, const char * command_line, int array_size)
 
 int parse_command_line(Job * job, const char * command_line, int array_size)
 {
-
-    // char * word = "pcl test\n";
-    
-    
     array_t tokens;
     if(al_init(&tokens,20) == -1)
     {
@@ -120,24 +146,18 @@ int parse_command_line(Job * job, const char * command_line, int array_size)
         return -1;
     }
 
-    
     if(get_tokens(&tokens,command_line, array_size) ==-1)
     {
         return -1;
     }
 
-    // for(int i=0; i<tokens.length; i++)
-    // {
-    //     write(STDOUT_FILENO, tokens.data[i], strlen(tokens.data[i]));
-    // }
-
-    // write(STDOUT_FILENO,word , strlen(word));
-
     char * current_word = NULL;
+    char * prev_word = NULL;
     char first_char;
+
+    //loops through all tokens, based on the first character determines if it is an argument or special char
     for(int i=0; i<tokens.length; i++)
     {
-        
         current_word = tokens.data[i];
         enum token_type token = get_token_type(current_word[0]);
 
@@ -147,44 +167,48 @@ int parse_command_line(Job * job, const char * command_line, int array_size)
 
             if(current_process->arguments.length == 0)
             {
-                //output error, wrong command format
-                //return NULL?
+                invalid_format(current_word);
+                return -1;
             }
 
             if(current_process->outputfile)
             {
-                //output error, wrong command format
-                //return NULL?
-            }
-
-            i++;
-            if(i >= tokens.length)
-            {
-                //output error, wrong command format
+                invalid_format(current_word);
                 return -1;
             }
 
-            current_word = tokens.data[i];
-            first_char = current_word[0];
-            if(is_input_redirection(first_char) || is_output_redirection(first_char) || is_pipe(first_char))
+            //moves index one position to grab next token
+            i++;
+            //makes sure there is a next token before retrivieng it 
+            if(i >= tokens.length)
             {
-                //output error, wrong command format
-                //return NULL?
+                invalid_format(current_word);
+                return -1;
             }
 
+            prev_word = current_word;
+            current_word = tokens.data[i];
+            first_char = current_word[0];
+            //if the token right after the pipe is not a 'word' than it's an error
+            if(is_input_redirection(first_char) || is_output_redirection(first_char) || is_pipe(first_char))
+            {
+                invalid_format(prev_word);
+                return -1;
+            }
+
+            //creates a new process and adds it to the job
             Process * prev_procs = current_process;
+            prev_procs->out_pipe =1;
             current_process = job_add_procs(job);
             if(!current_process)
             {
-                // return NULL;
+                return -1;
             }
 
-            prev_procs->out_pipe =1;
             current_process->in_pipe=1;
-
-            if(!procs_add_argument(current_process, current_word) || !procs_set_execpath(current_process, current_word))
+            if(procs_add_argument(current_process, current_word) == -1|| procs_set_execpath(current_process, current_word)==-1)
             {
-                // return NULL;
+                return -1;
             }
             break;
         
@@ -192,72 +216,72 @@ int parse_command_line(Job * job, const char * command_line, int array_size)
 
             if(current_process->arguments.length == 0)
             {
-                //output error, wrong command format
-                //return NULL?
+                invalid_format(current_word);
+                return -1;
             }
 
             if(current_process->inputfile)
             {
-                //output error, wrong command format
-                //return NULL?
+                invalid_format(current_word);
+                return -1;
             }
 
             i++;
             if(i >= tokens.length)
             {
-                //output error, wrong command format
-                // return NULL;
+                invalid_format(current_word);
+                return -1;
             }
 
+            prev_word = current_word;
             current_word = tokens.data[i];
             first_char = current_word[0];
             if(is_input_redirection(first_char) || is_output_redirection(first_char) || is_pipe(first_char))
             {
-                //output error, wrong command format
-                //return NULL?
+                invalid_format(prev_word);
+                return -1;
             }
 
-            if(!procs_set_inputfile(current_process, current_word))
+            if(procs_set_inputfile(current_process, current_word) ==-1)
             {
-                // return NULL;
+                return -1;
             }
-
             break;
 
         case OUTPUT_RDRTN:
-
+            
             if(current_process->arguments.length == 0)
             {
-                //output error, wrong command format
-                //return NULL?
+                invalid_format(current_word);
+                return -1;
             }
 
             if(current_process->outputfile)
             {
-                //output error, wrong command format
-                //return NULL?
+                invalid_format(current_word);
+                return -1;
             }
 
             i++;
             if(i >= tokens.length)
             {
-                //output error, wrong command format
-                // return NULL;
+                invalid_format(current_word);
+                return -1;
             }
 
+            prev_word = current_word;
             current_word = tokens.data[i];
             first_char = current_word[0];
             if(is_input_redirection(first_char) || is_output_redirection(first_char) || is_pipe(first_char))
             {
-                //output error, wrong command format
-                //return NULL?
+                invalid_format(prev_word);
+                return -1;
             }
 
-            if(!procs_set_outputfile(current_process, current_word))
+            if(procs_set_outputfile(current_process, current_word) == -1)
             {
-                // return NULL;
+                return -1;
             }
-            
             break;
 
         case WORD:
@@ -294,7 +318,6 @@ int parse_command_line(Job * job, const char * command_line, int array_size)
                     return -1;
                 }
                 
-
                 for(int i =0; i < wildcards->length; i++){
                     if(procs_add_argument(current_process, wildcards->data[i]) == -1)
                     {
@@ -312,11 +335,10 @@ int parse_command_line(Job * job, const char * command_line, int array_size)
             {
                 return -1;
             }
-            break;
-            
+            break;  
         }
-
     }
-
+    
+    al_destroy(&tokens);
     return 0;
 }
