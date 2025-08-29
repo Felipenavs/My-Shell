@@ -3,8 +3,6 @@
 #include <stdio.h>
 #include "myjob.h"
 
-//initialize job struct, initially can hold up to three processes can increase if neeeded
-//returns NULL if malloc cant allocate memory for processes.
 int init_job(Job * job) 
 {
     job->capacity = 3;
@@ -19,20 +17,19 @@ int init_job(Job * job)
     return 0;
 }
 
-//creates a new process
-//returns null if realloc cant allocate more memory
 Process * job_add_procs(Job * job)
 {
 
     if(job->processes_count >= job->capacity)
     {
-        job->capacity *= 2;
-        job->processes = realloc(job->processes, job->capacity);
-        if(!job->processes)
+        job->capacity = job->capacity * 2;
+        Process * temp = realloc(job->processes, sizeof(Process) * job->capacity);
+        if(!temp)
         {
             perror("realloc");
             return NULL;
         }
+        job->processes = temp;
     }
 
     Process * procs = &job->processes[job->processes_count];
