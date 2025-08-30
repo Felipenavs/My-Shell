@@ -56,12 +56,14 @@ void mywhich(Process *procs);
 /**
  * @brief Implements the 'exit' built-in command.
  *
- * Terminates the shell program, cleaning up any necessary resources.
+ * Terminates the shell program.
  *
  * @param procs The Process structure containing any exit arguments.
  *              (In most cases, unused.)
+ * @param flag The flag variable used in the main loop.
+ * 
  */
-void myexit(Process *procs);
+void myexit(Process *procs, int * flag);
 
 #endif
 

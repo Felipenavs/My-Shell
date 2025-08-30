@@ -95,10 +95,18 @@ void mywhich(Process * procs)
     }
 }
 
-void myexit(Process * procs)
+void myexit(Process * procs, int * flag)
 {
-    //TO DO: print arguments if there are any
-    //send signal to parent
+    if(procs->arguments.length > 1)
+    {
+        for(int i =1; i<procs->arguments.length; i++ )
+        {
+            char word[PATH_MAX];
+            snprintf(word,sizeof(word), "%s ",procs->arguments.data[i]);
+            write(STDOUT_FILENO, word, strlen(word));
+        }
+    }
+    *flag = 0;
 }
 
 
